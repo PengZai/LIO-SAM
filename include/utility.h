@@ -15,13 +15,15 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 
-#include <opencv/cv.h>
+
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/search/impl/search.hpp>
 #include <pcl/range_image/range_image.h>
 #include <pcl/kdtree/kdtree_flann.h>
+// #include <opencv/cv.h>
+#include <opencv2/opencv.hpp> 
 #include <pcl/common/common.h>
 #include <pcl/common/transforms.h>
 #include <pcl/registration/icp.h>
@@ -30,6 +32,8 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/crop_box.h> 
 #include <pcl_conversions/pcl_conversions.h>
+
+
 
 #include <tf/LinearMath/Quaternion.h>
 #include <tf/transform_listener.h>
@@ -89,6 +93,10 @@ public:
     // Save pcd
     bool savePCD;
     string savePCDDirectory;
+
+    // Save trajectory
+    bool saveTrajectory;
+    string saveTrajectoryResult;
 
     // Lidar Sensor Configuration
     SensorType sensor;
@@ -172,6 +180,9 @@ public:
 
         nh.param<bool>("lio_sam/savePCD", savePCD, false);
         nh.param<std::string>("lio_sam/savePCDDirectory", savePCDDirectory, "/Downloads/LOAM/");
+
+        nh.param<bool>("lio_sam//saveTrajectory", saveTrajectory, false);
+        nh.param<std::string>("lio_sam//saveTrajectoryResult", saveTrajectoryResult, "/tmp/loam/traj.txt");
 
         std::string sensorStr;
         nh.param<std::string>("lio_sam/sensor", sensorStr, "");
