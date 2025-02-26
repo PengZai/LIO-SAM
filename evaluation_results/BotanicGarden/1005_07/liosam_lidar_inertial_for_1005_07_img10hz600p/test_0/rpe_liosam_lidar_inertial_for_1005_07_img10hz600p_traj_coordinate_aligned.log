@@ -4,9 +4,11 @@ for delta = 1 (frames) using consecutive pairs
 
        max	0.098291
       mean	0.035555
-    median	0.034143
+    median	0.034142
        min	0.005640
       rmse	0.038311
-       sse	0.770577
+       sse	0.770573
        std	0.014269
 
+Plot saved to BotanicGarden/1005_07/liosam_lidar_inertial_for_1005_07_img10hz600p/test_0/2d_rpe_traj_raw
+Plot saved to BotanicGarden/1005_07/liosam_lidar_inertial_for_1005_07_img10hz600p/test_0/2d_rpe_traj_map
