@@ -2,9 +2,13 @@ lio_sam:
 
   # Topics
   pointCloudTopic: "/velodyne_points"               # Point cloud data
-  imuTopic: "/imu/data"                         # IMU data
-  odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry, same frequency as IMU
-  gpsTopic: "odometry/gpsz"                   # GPS odometry topic from navsat, see module_navsat.launch file
+  imuTopic: "/imu/data"                             # IMU data
+  odomTopic: "odometry/imu"                         # IMU pre-preintegration odometry, same frequency as IMU
+  gpsTopic: "odometry/gpsz"                         # GPS odometry topic from navsat, see module_navsat.launch file
+  gtPoseTopic: "/gt_poses"                          # GT pose topic 
+
+  # GT pose
+  useGTPose: true # if using GT pose, set to "true" it will be add to backend optimization procedure with strong confidence
 
   # Frames
   lidarFrame: "base_link"

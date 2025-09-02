@@ -65,6 +65,8 @@ public:
     ros::Publisher pubLaserOdometryIncremental;
     ros::Publisher pubKeyPoses;
     ros::Publisher pubPath;
+    ros::Publisher pubGTPath;
+
 
     ros::Publisher pubHistoryKeyFrames;
     ros::Publisher pubIcpKeyFrames;
@@ -78,10 +80,14 @@ public:
     ros::Subscriber subCloud;
     ros::Subscriber subGPS;
     ros::Subscriber subLoop;
+    ros::Subscriber subGTPose;
+
 
     ros::ServiceServer srvSaveMap;
 
     std::deque<nav_msgs::Odometry> gpsQueue;
+    std::deque<geometry_msgs::PoseStamped::ConstPtr> gtPoseQueue;
+
     lio_sam::cloud_info cloudInfo;
 
     vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;
@@ -148,6 +154,7 @@ public:
     deque<std_msgs::Float64MultiArray> loopInfoVec;
 
     nav_msgs::Path globalPath;
+    nav_msgs::Path globalGTPath;
 
     Eigen::Affine3f transPointAssociateToMap;
     Eigen::Affine3f incrementalOdometryAffineFront;
@@ -167,9 +174,16 @@ public:
         pubLaserOdometryIncremental = nh.advertise<nav_msgs::Odometry> ("lio_sam/mapping/odometry_incremental", 1);
         pubPath                     = nh.advertise<nav_msgs::Path>("lio_sam/mapping/path", 1);
 
+
         subCloud = nh.subscribe<lio_sam::cloud_info>("lio_sam/feature/cloud_info", 1, &mapOptimization::laserCloudInfoHandler, this, ros::TransportHints().tcpNoDelay());
         subGPS   = nh.subscribe<nav_msgs::Odometry> (gpsTopic, 200, &mapOptimization::gpsHandler, this, ros::TransportHints().tcpNoDelay());
         subLoop  = nh.subscribe<std_msgs::Float64MultiArray>("lio_loop/loop_closure_detection", 1, &mapOptimization::loopInfoHandler, this, ros::TransportHints().tcpNoDelay());
+
+     
+        subGTPose = nh.subscribe<geometry_msgs::PoseStamped>(gtPoseTopic, 200, &mapOptimization::gtPoseHandler, this, ros::TransportHints().tcpNoDelay());
+        pubGTPath   = nh.advertise<nav_msgs::Path>("lio_sam/mapping/GTpath", 1);
+
+    
 
         srvSaveMap  = nh.advertiseService("lio_sam/save_map", &mapOptimization::saveMapService, this);
 
@@ -274,6 +288,32 @@ public:
     {
         gpsQueue.push_back(*gpsMsg);
     }
+
+    void gtPoseHandler(const geometry_msgs::PoseStamped::ConstPtr& gtPoseMsg)
+    {
+        gtPoseQueue.push_back(gtPoseMsg);
+
+
+        geometry_msgs::PoseStamped::ConstPtr gtPose = gtPoseQueue.back();
+        // printGTPose(*gtPose);
+
+    }
+
+    void printGTPose(geometry_msgs::PoseStamped gtPose)
+    {
+        std::cout << "timestamp: " << gtPose.header.stamp.toSec() << std::endl;
+        std::cout << "position: ["
+              << gtPose.pose.position.x << ", "
+              << gtPose.pose.position.y << ", "
+              << gtPose.pose.position.z << "]" << std::endl;
+        std::cout << "orientation (x,y,z,w): ["
+              << gtPose.pose.orientation.x << ", "
+              << gtPose.pose.orientation.y << ", "
+              << gtPose.pose.orientation.z << ", "
+              << gtPose.pose.orientation.w << "]" << std::endl;
+
+    }
+
 
     void pointAssociateToMap(PointType const * const pi, PointType * const po)
     {
@@ -1500,6 +1540,58 @@ public:
         }
     }
 
+
+    void addGTPoseFactor()
+    {
+        if (gtPoseQueue.empty())
+            return;
+
+        // wait for system initialized and settles down
+        if (cloudKeyPoses3D->points.empty() || cloudKeyPoses6D->points.empty()){
+            return;
+        }
+        
+        geometry_msgs::PoseStamped::ConstPtr best_fit_gt_pose_ptr;
+        double best_fit_dt = std::numeric_limits<double>::infinity();
+
+        // drop very old entries (speeds up)
+        while (!gtPoseQueue.empty() &&
+               gtPoseQueue.front()->header.stamp.toSec() < timeLaserInfoCur - 2.0) {
+            gtPoseQueue.pop_front();
+        }
+        
+
+        for (const auto& msg : gtPoseQueue) {
+            double dt = std::fabs(msg->header.stamp.toSec() - timeLaserInfoCur);
+            if (dt < best_fit_dt) {
+                best_fit_dt = dt;
+                best_fit_gt_pose_ptr = msg;
+            }
+        }
+
+        if (!best_fit_gt_pose_ptr || best_fit_dt >= 0.2) {
+            return ;
+        }
+
+        // std::cout << "size of deque " << gtPoseQueue.size() << ", best_fit_dt:" << best_fit_dt << std::endl; 
+        // printGTPose(*best_fit_gt_pose_ptr);
+        
+        updateGTPath(best_fit_gt_pose_ptr);
+        
+        if(useGTPose){
+
+            noiseModel::Diagonal::shared_ptr gt_pose_noise = noiseModel::Diagonal::Variances((Vector(6) << 1e-8, 1e-8, 1e-8, 1e-8, 1e-8, 1e-8).finished()); // rad*rad, meter*meter
+
+
+            gtsam::Pose3 gtsam_gt_pose(gtsam::Rot3::Quaternion(best_fit_gt_pose_ptr->pose.orientation.w, best_fit_gt_pose_ptr->pose.orientation.x, best_fit_gt_pose_ptr->pose.orientation.y, best_fit_gt_pose_ptr->pose.orientation.z),
+                                    gtsam::Point3(best_fit_gt_pose_ptr->pose.position.x, best_fit_gt_pose_ptr->pose.position.y, best_fit_gt_pose_ptr->pose.position.z));
+
+            gtsam::PriorFactor<gtsam::Pose3> gt_pose_factor(cloudKeyPoses3D->size(), gtsam_gt_pose, gt_pose_noise);
+            gtSAMgraph.add(gt_pose_factor);
+        }
+
+    }
+
     void addLoopFactor()
     {
         if (loopIndexQueue.empty())
@@ -1533,6 +1625,10 @@ public:
 
         // loop factor
         addLoopFactor();
+
+        
+        addGTPoseFactor();
+        
 
         // cout << "****************************************************" << endl;
         // gtSAMgraph.print("GTSAM Graph:\n");
@@ -1656,6 +1752,12 @@ public:
         globalPath.poses.push_back(pose_stamped);
     }
 
+    void updateGTPath(const geometry_msgs::PoseStamped::ConstPtr &pose_stamped_in)
+    {
+
+        globalGTPath.poses.push_back(*pose_stamped_in);
+    }
+
     void publishOdometry()
     {
         // Publish odometry for ROS (global)
@@ -1760,6 +1862,15 @@ public:
             globalPath.header.frame_id = odometryFrame;
             pubPath.publish(globalPath);
         }
+        
+        // publish GT path
+        if(pubGTPath.getNumSubscribers() != 0)
+        {
+            globalGTPath.header.stamp = timeLaserInfoStamp;
+            globalGTPath.header.frame_id = odometryFrame;
+            pubGTPath.publish(globalGTPath);
+        }
+
         // publish SLAM infomation for 3rd-party usage
         static int lastSLAMInfoPubSize = -1;
         if (pubSLAMInfo.getNumSubscribers() != 0)

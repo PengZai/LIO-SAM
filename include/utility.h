@@ -10,6 +10,7 @@
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/NavSatFix.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 #include <visualization_msgs/Marker.h>
@@ -77,6 +78,9 @@ public:
     string imuTopic;
     string odomTopic;
     string gpsTopic;
+    string gtPoseTopic;
+
+    bool useGTPose;
 
     //Frames
     string lidarFrame;
@@ -167,6 +171,10 @@ public:
         nh.param<std::string>("lio_sam/imuTopic", imuTopic, "imu_correct");
         nh.param<std::string>("lio_sam/odomTopic", odomTopic, "odometry/imu");
         nh.param<std::string>("lio_sam/gpsTopic", gpsTopic, "odometry/gps");
+        nh.param<std::string>("lio_sam/gtPoseTopic", gtPoseTopic, "odometry/gtPose");
+
+        nh.param<bool>("lio_sam/useGTPose", useGTPose, false);
+
 
         nh.param<std::string>("lio_sam/lidarFrame", lidarFrame, "base_link");
         nh.param<std::string>("lio_sam/baselinkFrame", baselinkFrame, "base_link");
@@ -283,6 +291,8 @@ public:
         imu_out.orientation.z = q_final.z();
         imu_out.orientation.w = q_final.w();
 
+        // std::cout << "imu orientation "<< imu_out.orientation.x << ", " << imu_out.orientation.y << ", " << imu_out.orientation.z << ", " << imu_out.orientation.w << std::endl;
+        
         if (sqrt(q_final.x()*q_final.x() + q_final.y()*q_final.y() + q_final.z()*q_final.z() + q_final.w()*q_final.w()) < 0.1)
         {
             ROS_ERROR("Invalid quaternion, please use a 9-axis IMU!");
